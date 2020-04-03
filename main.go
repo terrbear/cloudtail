@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -16,17 +17,6 @@ var sess = session.Must(session.NewSessionWithOptions(session.Options{
 }))
 
 var cloudwatch = cloudwatchlogs.New(sess)
-
-// DEBUG is just used internally for debugging
-var DEBUG = true
-
-func debug(message ...interface{}) {
-	if DEBUG {
-		log.Println()
-		log.Println(message...)
-		log.Println()
-	}
-}
 
 type logPayload struct {
 	logStream string
@@ -64,15 +54,12 @@ func logFetch(logGroupName string, logStreamName string, token string) string {
 		log.Fatal(err)
 	}
 
-	debug(output)
-
 	logChannel <- logPayload{
 		events:    output.Events,
 		logStream: logStreamName,
 	}
 
 	if *output.NextForwardToken == token {
-		debug("sleeping")
 		time.Sleep(5 * time.Second)
 	}
 
@@ -91,8 +78,6 @@ func initialLogFetch(logGroupName string, logStreamName string) string {
 		log.Fatal(err)
 	}
 
-	debug(output)
-
 	logChannel <- logPayload{
 		events:    output.Events,
 		logStream: logStreamName,
@@ -104,7 +89,8 @@ func initialLogFetch(logGroupName string, logStreamName string) string {
 var logStreams map[string]bool = map[string]bool{}
 
 func fetchLogStreams(logGroup string) {
-	// just looking at the last 50 - because this polls if you have more recent events they'll bubble up but i never have more than 50 active log streams
+	// just looking at the last 50 - because this polls if you have more recent
+	// events they'll bubble up but i never have more than 50 active log streams
 	input := &cloudwatchlogs.DescribeLogStreamsInput{
 		Descending:   aws.Bool(true),
 		LogGroupName: aws.String(logGroup),
@@ -121,10 +107,8 @@ func fetchLogStreams(logGroup string) {
 		if *stream.LastEventTimestamp >= dayAgo && !logStreams[*stream.LogStreamName] {
 			logStreams[*stream.LogStreamName] = true
 			go watchLogStream(logGroup, *stream.LogStreamName)
-			// debug(stream)
 		}
 	}
-	//debug(output)
 }
 
 func watchLogGroup(logGroup string) {
@@ -142,6 +126,12 @@ func watchLogStream(logGroup string, logStream string) {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "version" {
+		// TODO move this to something not hardcoded
+		fmt.Println("cloudtail version v0.0.2")
+		os.Exit(2)
+	}
+
 	logGroup := flag.String("log", "", "log group")
 	logStream := flag.String("stream", "", "log stream")
 
